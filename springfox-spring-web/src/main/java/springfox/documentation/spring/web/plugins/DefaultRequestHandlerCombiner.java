@@ -24,6 +24,10 @@ import com.google.common.collect.LinkedListMultimap;
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import springfox.documentation.RequestHandler;
 import springfox.documentation.spi.service.RequestHandlerCombiner;
 
@@ -36,6 +40,7 @@ import static springfox.documentation.builders.BuilderDefaults.*;
 import static springfox.documentation.spi.service.contexts.Orderings.*;
 
 class DefaultRequestHandlerCombiner implements RequestHandlerCombiner {
+  private static final Logger log = LoggerFactory.getLogger(RequestHandlerCombiner.class);
 
   private static final PathAndParametersEquivalence EQUIVALENCE = new PathAndParametersEquivalence();
 
@@ -56,37 +61,42 @@ class DefaultRequestHandlerCombiner implements RequestHandlerCombiner {
     if (source.size() == 0 || source.size() == 1) {
       return requestHandlers;
     }
-    ListMultimap<Equivalence.Wrapper<RequestHandler>, RequestHandler> groupByEquality
-        = Multimaps.index(source, equivalenceAsKey());
     List<RequestHandler> combined = newArrayList();
-    for (Equivalence.Wrapper<RequestHandler> path : groupByEquality.keySet()) {
-      List<RequestHandler> handlers = groupByEquality.get(path);
+    try {
+      ListMultimap<Equivalence.Wrapper<RequestHandler>, RequestHandler> groupByEquality
+              = Multimaps.index(source, equivalenceAsKey());
+      for (Equivalence.Wrapper<RequestHandler> path : groupByEquality.keySet()) {
+        List<RequestHandler> handlers = groupByEquality.get(path);
 
-      RequestHandler toCombine = path.get();
-      if (handlers.size() > 1) {
-        for (RequestHandler each : handlers) {
-          if (each.equals(toCombine)) {
-            continue;
+        RequestHandler toCombine = path.get();
+        if (handlers.size() > 1) {
+          for (RequestHandler each : handlers) {
+            if (each.equals(toCombine)) {
+              continue;
+            }
+            toCombine = combine(toCombine, each);
           }
-          toCombine = combine(toCombine, each);
         }
+        combined.add(toCombine);
       }
-      combined.add(toCombine);
+    } catch (Exception e) {
+      log.error("Error combining sources {}", source.get(0).getName(), e);
     }
     return combined;
   }
 
   private Function<RequestHandler, Equivalence.Wrapper<RequestHandler>> equivalenceAsKey() {
     return new
-        Function<RequestHandler, Equivalence.Wrapper<RequestHandler>>() {
-      @Override
-      public Equivalence.Wrapper<RequestHandler> apply(RequestHandler input) {
-        return EQUIVALENCE.wrap(input);
-      }
-    };
+            Function<RequestHandler, Equivalence.Wrapper<RequestHandler>>() {
+              @Override
+              public Equivalence.Wrapper<RequestHandler> apply(RequestHandler input) {
+                return EQUIVALENCE.wrap(input);
+              }
+            };
   }
 
   private RequestHandler combine(RequestHandler first, RequestHandler second) {
     return new CombinedRequestHandler(first, second);
   }
 }
+
